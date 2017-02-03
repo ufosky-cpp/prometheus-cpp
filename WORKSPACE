@@ -36,31 +36,31 @@ cc_library(
 """,
 )
 
+git_repository(
+    name = "org_pubref_rules_protobuf",
+    remote = "https://github.com/pubref/rules_protobuf",
+    tag = "v0.7.1",
+)
+
+load("@org_pubref_rules_protobuf//cpp:rules.bzl", "cpp_proto_repositories")
+cpp_proto_repositories()
+
 new_git_repository(
     name = "prometheus_client_model",
     remote = "https://github.com/prometheus/client_model.git",
     commit = "e2da43a",
     build_file_content = """
-cc_library(
+load("@org_pubref_rules_protobuf//cpp:rules.bzl", "cc_proto_library")
+cc_proto_library(
     name = "prometheus_client_model",
-    srcs = [
-        "cpp/metrics.pb.cc",
+    protos = [
+        "metrics.proto",
     ],
-    hdrs = [
-         "cpp/metrics.pb.h",
-    ],
-    strip_include_prefix = "cpp",
     visibility = ["//visibility:public"],
-    deps = ["@protobuf//:protobuf"],
 )
     """,
 )
 
-git_repository(
-    name = "protobuf",
-    remote = "https://github.com/google/protobuf.git",
-    tag = "v3.2.0",
-    )
 
 new_git_repository(
     name = "civetweb",

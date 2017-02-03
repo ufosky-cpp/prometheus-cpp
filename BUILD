@@ -22,7 +22,7 @@ cc_library(
     ]),
     strip_include_prefix = "include",
     visibility = ["//visibility:public"],
-    deps = ["@protobuf//:protobuf",
+    deps = ["@com_github_google_protobuf//:protobuf",
             "@prometheus_client_model//:prometheus_client_model",
             "@civetweb//:civetweb",
            ],
