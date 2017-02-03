@@ -59,7 +59,7 @@ cc_library(
 git_repository(
     name = "protobuf",
     remote = "https://github.com/google/protobuf.git",
-    tag = "v3.0.0",
+    tag = "v3.2.0",
     )
 
 new_git_repository(
