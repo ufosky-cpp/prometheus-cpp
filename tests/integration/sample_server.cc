@@ -22,12 +22,12 @@ int main(int argc, char** argv) {
   auto& counter_family = BuildCounter()
                              .Name("time_running_seconds")
                              .Help("How many seconds is this server running?")
-                             .Labels({{"label", "value"}})
+                             .Labels({{"label", "value1"}})
                              .Register(*registry);
 
   // add a counter to the metric family
   auto& second_counter = counter_family.Add(
-      {{"another_label", "value"}, {"yet_another_label", "value"}});
+      {{"another_label", "value2"}, {"yet_another_label", "value3"}});
 
   // ask the exposer to scrape the registry on incoming scrapes
   exposer.RegisterCollectable(registry);

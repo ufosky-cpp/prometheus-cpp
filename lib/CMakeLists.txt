@@ -30,6 +30,7 @@ add_library(prometheus-cpp
   summary.cc
   summary_builder.cc
   text_serializer.cc
+  json_serializer.cc
 
   # civetweb
 

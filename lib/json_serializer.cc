@@ -1,0 +1,195 @@
+#include "prometheus/json_serializer.h"
+#include <cmath>
+#include <iostream>
+#include <sstream>
+#include <limits>
+
+namespace prometheus {
+
+using namespace io::prometheus::client;
+
+namespace {
+
+// Write a double as a string, with proper formatting for infinity and NaN
+std::string ToString(double v) {
+  if (std::isnan(v)) {
+    return "Nan";
+  }
+  if (std::isinf(v)) {
+    return (v < 0 ? "-Infinity" : "+Infinity");
+  }
+  return std::to_string(v);
+}
+
+const std::string& EscapeLabelValue(const std::string& value,
+                                    std::string* tmp) {
+  bool copy = false;
+  for (size_t i = 0; i < value.size(); ++i) {
+    auto c = value[i];
+    if (c == '\\' || c == '"' || c == '\n') {
+      if (!copy) {
+        tmp->reserve(value.size() + 1);
+        tmp->assign(value, 0, i);
+        copy = true;
+      }
+      if (c == '\\') {
+        tmp->append("\\\\");
+      } else if (c == '"') {
+        tmp->append("\\\"");
+      } else {
+        tmp->append("\\\n");
+      }
+    } else if (copy) {
+      tmp->push_back(c);
+    }
+  }
+  return copy ? *tmp : value;
+}
+
+// Write a line header: metric name and labels
+void WriteHead(std::ostream& out, const MetricFamily& family,
+               const Metric& metric, const std::string& suffix = "",
+               const std::string& extraLabelName = "",
+               const std::string& extraLabelValue = "") {
+  out << "{\"key\":\"" << family.name() << suffix << "\"";
+  if (metric.label_size() != 0 || !extraLabelName.empty()) {
+//    out << "{";
+//    const char* prefix = "";
+    std::string tmp;
+    for (auto& lp : metric.label()) {
+      out << ",\"" << lp.name() << "\":\"" << EscapeLabelValue(lp.value(), &tmp)
+          << "\"";
+    }
+    if (!extraLabelName.empty()) {
+      out << ",\"" << extraLabelName << "\":\""
+          << EscapeLabelValue(extraLabelValue, &tmp) << "\"";
+    }
+//    out << "}";
+  }
+//  out << " ";
+}
+
+// Write a line trailer: timestamp
+void WriteTail(std::ostream& out, const Metric& metric) {
+  if (metric.timestamp_ms() != 0) {
+    out << ",\"timestamp\":" << metric.timestamp_ms();
+  }
+  out << "}\n";
+}
+
+void SerializeCounter(std::ostream& out, const MetricFamily& family,
+                      const Metric& metric) {
+  WriteHead(out, family, metric);
+  out << ",\"value\":\"" << ToString(metric.counter().value()) << "\"";
+  WriteTail(out, metric);
+}
+
+void SerializeGauge(std::ostream& out, const MetricFamily& family,
+                    const Metric& metric) {
+  WriteHead(out, family, metric);
+  out << ",\"value\":\"" << ToString(metric.gauge().value()) << "\"";
+  WriteTail(out, metric);
+}
+
+void SerializeSummary(std::ostream& out, const MetricFamily& family,
+                      const Metric& metric) {
+  auto& sum = metric.summary();
+  WriteHead(out, family, metric, "_count");
+  out << ",\"value\":\"" << sum.sample_count() << "\"";
+  WriteTail(out, metric);
+
+  WriteHead(out, family, metric, "_sum");
+  out << ",\"value\":\"" << ToString(sum.sample_sum()) << "\"";
+  WriteTail(out, metric);
+
+  for (auto& q : sum.quantile()) {
+    WriteHead(out, family, metric, "_quantile", "quantile",
+              ToString(q.quantile()));
+    out << ",\"value\":\"" << ToString(q.value()) << "\"";
+    WriteTail(out, metric);
+  }
+}
+
+void SerializeUntyped(std::ostream& out, const MetricFamily& family,
+                      const Metric& metric) {
+  WriteHead(out, family, metric);
+  out << ToString(metric.untyped().value());
+  WriteTail(out, metric);
+}
+
+void SerializeHistogram(std::ostream& out, const MetricFamily& family,
+                        const Metric& metric) {
+  auto& hist = metric.histogram();
+  WriteHead(out, family, metric, "_count");
+  out << ",\"value\":\"" << hist.sample_count() << "\"";
+  WriteTail(out, metric);
+
+  WriteHead(out, family, metric, "_sum");
+  out << ",\"value\":\"" << ToString(hist.sample_sum()) << "\"";
+  WriteTail(out, metric);
+
+  double last = -std::numeric_limits<double>::infinity();
+  for (auto& b : hist.bucket()) {
+    WriteHead(out, family, metric, "_bucket", "le", ToString(b.upper_bound()));
+    last = b.upper_bound();
+    out << ",\"value\":\"" << b.cumulative_count() << "\"";
+    WriteTail(out, metric);
+  }
+
+  if (last != std::numeric_limits<double>::infinity()) {
+    WriteHead(out, family, metric, "_bucket", "le", "+Infinity");
+    out << ",\"value\":\"" << hist.sample_count() << "\"";
+    WriteTail(out, metric);
+  }
+}
+
+void SerializeFamily(std::ostream& out, const MetricFamily& family) {
+//  if (!family.help().empty()) {
+//    out << "# HELP " << family.name() << " " << family.help() << "\n";
+//  }
+  switch (family.type()) {
+    case COUNTER:
+//      out << "# TYPE " << family.name() << " counter\n";
+      for (auto& metric : family.metric()) {
+        SerializeCounter(out, family, metric);
+      }
+      break;
+    case GAUGE:
+//      out << "# TYPE " << family.name() << " gauge\n";
+      for (auto& metric : family.metric()) {
+        SerializeGauge(out, family, metric);
+      }
+      break;
+    case SUMMARY:
+//      out << "# TYPE " << family.name() << " summary\n";
+      for (auto& metric : family.metric()) {
+        SerializeSummary(out, family, metric);
+      }
+      break;
+    case UNTYPED:
+//      out << "# TYPE " << family.name() << " untyped\n";
+      for (auto& metric : family.metric()) {
+        SerializeUntyped(out, family, metric);
+      }
+      break;
+    case HISTOGRAM:
+//      out << "# TYPE " << family.name() << " histogram\n";
+      for (auto& metric : family.metric()) {
+        SerializeHistogram(out, family, metric);
+      }
+      break;
+    default:
+      break;
+  }
+}
+}
+
+std::string JsonSerializer::Serialize(
+    const std::vector<io::prometheus::client::MetricFamily>& metrics) {
+  std::ostringstream ss;
+  for (auto& family : metrics) {
+    SerializeFamily(ss, family);
+  }
+  return ss.str();
+}
+}
